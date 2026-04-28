@@ -1288,43 +1288,67 @@ function proxyUrl(path) {
 }
 
 async function apiGetOrCreateFolder(token, parentId, folderName) {
-  // Lister les enfants du dossier parent pour trouver le sous-dossier
-  const res = await fetch(proxyUrl(`/2/drive/${KDRIVE_ID}/files/${parentId}/files`), {
+  // Lister les fichiers du dossier parent
+  const res = await fetch(proxyUrl(`/2/drive/${KDRIVE_ID}/files/${parentId}/files?page=1&per_page=100`), {
     headers: apiHeaders(token)
   });
   const data = await res.json();
-  if (data.result !== 'success') throw new Error('Erreur listage dossier');
-  const existing = (data.data || []).find(f => f.name === folderName && f.type === 'dir');
-  if (existing) return existing.id;
+  if (data.result === 'success') {
+    const existing = (data.data || []).find(f => f.name === folderName && f.type === 'dir');
+    if (existing) return existing.id;
+  }
 
-  // Créer le dossier s'il n'existe pas
-  const createRes = await fetch(proxyUrl(`/2/drive/${KDRIVE_ID}/files/directories`), {
+  // Créer le dossier
+  const createRes = await fetch(proxyUrl(`/2/drive/${KDRIVE_ID}/files`), {
     method: 'POST',
     headers: apiHeaders(token),
-    body: JSON.stringify({ parent_directory_id: parentId, name: folderName })
+    body: JSON.stringify({ parent_id: parentId, name: folderName, type: 'dir' })
   });
   const createData = await createRes.json();
-  if (createData.result !== 'success') throw new Error('Erreur création dossier');
+  if (createData.result !== 'success') {
+    // Peut-être déjà existant - retenter le listing
+    const res2 = await fetch(proxyUrl(`/2/drive/${KDRIVE_ID}/files/${parentId}/files?page=1&per_page=100`), {
+      headers: apiHeaders(token)
+    });
+    const data2 = await res2.json();
+    const found = (data2.data || []).find(f => f.name === folderName && f.type === 'dir');
+    if (found) return found.id;
+    throw new Error('Impossible de créer le dossier Rapports');
+  }
   return createData.data.id;
 }
 
 async function apiUploadFile(token, folderId, filename, jsonContent) {
-  // Étape 1 : créer le fichier (upload session)
-  const createRes = await fetch(proxyUrl(`/2/drive/${KDRIVE_ID}/upload?file_name=${encodeURIComponent(filename)}&parent_directory_id=${folderId}&conflict=version`), {
+  // Upload via l'API kDrive - multipart ou direct
+  const blob = new Blob([jsonContent], { type: 'application/json' });
+  const formData = new FormData();
+  formData.append('file', blob, filename);
+
+  const uploadRes = await fetch(proxyUrl(`/2/drive/${KDRIVE_ID}/files/${folderId}/upload`), {
     method: 'POST',
-    headers: {
-      'Authorization': 'Bearer ' + token,
-      'Content-Type': 'application/octet-stream',
-    },
-    body: new TextEncoder().encode(jsonContent)
+    headers: { 'Authorization': 'Bearer ' + token },
+    body: formData
   });
-  const createData = await createRes.json();
-  if (createData.result !== 'success') throw new Error('Erreur upload : ' + JSON.stringify(createData.error));
-  return createData.data;
+  const uploadData = await uploadRes.json();
+  if (uploadData.result !== 'success') {
+    // Essayer avec PUT si POST échoue
+    const putRes = await fetch(proxyUrl(`/2/drive/${KDRIVE_ID}/upload?file_name=${encodeURIComponent(filename)}&parent_directory_id=${folderId}&total_size=${blob.size}&conflict=version`), {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/octet-stream',
+      },
+      body: jsonContent
+    });
+    const putData = await putRes.json();
+    if (putData.result !== 'success') throw new Error('Erreur upload : ' + (putData.error?.description || JSON.stringify(putData)));
+    return putData.data;
+  }
+  return uploadData.data;
 }
 
 async function apiListFiles(token, folderId) {
-  const res = await fetch(proxyUrl(`/2/drive/${KDRIVE_ID}/files/${folderId}/files`), {
+  const res = await fetch(proxyUrl(`/2/drive/${KDRIVE_ID}/files/${folderId}/files?page=1&per_page=100`), {
     headers: apiHeaders(token)
   });
   const data = await res.json();
@@ -1336,7 +1360,7 @@ async function apiDownloadFile(token, fileId) {
   const res = await fetch(proxyUrl(`/2/drive/${KDRIVE_ID}/files/${fileId}/download`), {
     headers: { 'Authorization': 'Bearer ' + token }
   });
-  if (!res.ok) throw new Error('Erreur téléchargement');
+  if (!res.ok) throw new Error('Erreur téléchargement ' + res.status);
   return await res.text();
 }
 
