@@ -1606,6 +1606,9 @@ async function collectData() {
   // Tableau évaluation
   data.evalData = collectEvalData();
 
+  // Réunions d'expertise
+  data.reunions = collectReunions();
+
   return data;
 }
 
@@ -1708,6 +1711,8 @@ function restoreData(data) {
   }
   // Tableau évaluation
   if (data.evalData) restoreEvalData(data.evalData);
+  // Réunions
+  if (data.reunions) restoreReunions(data.reunions);
   // Remplir les 3 lignes fixes
   if (data.actors) {
     document.querySelectorAll('#actors-body tr').forEach((tr, i) => {
@@ -1915,6 +1920,69 @@ async function exportToRapport() {
   alert("✓ Rapport pré-rempli créé !\n\nOuvrez maintenant rapport_epme_app.html — les données du PV seront automatiquement chargées.");
 }
 
+
+// ── RÉUNIONS D'EXPERTISE ──────────────────────────────────────────────────────
+let reunionCount = 0;
+
+function addReunion(lieu, date, heure, personnes) {
+  const container = document.getElementById('reunions-container');
+  if (!container) return;
+  const n = ++reunionCount;
+  const rid = 'reunion-' + n;
+
+  const div = document.createElement('div');
+  div.id = rid;
+  div.style.cssText = 'border:1.5px solid var(--lgray);border-left:4px solid var(--navy);border-radius:6px;padding:16px;margin-bottom:12px;background:var(--silvr);';
+  div.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div style="font-size:13px;font-weight:700;color:var(--navy);">Réunion n° ${n}</div>
+      <button onclick="deleteReunion('${rid}')" style="background:none;border:none;color:#EF4444;font-size:16px;cursor:pointer;padding:2px 6px;border-radius:4px;" title="Supprimer">×</button>
+    </div>
+    <div class="field-row" style="margin-bottom:10px;">
+      <div class="field-group">
+        <div class="field-label">Lieu d'examen</div>
+        <input type="text" class="reunion-lieu" placeholder="Ets / Garage" value="${lieu||''}">
+      </div>
+      <div class="field-group">
+        <div class="field-label">Date</div>
+        <input type="date" class="reunion-date" value="${date||''}">
+      </div>
+      <div class="field-group">
+        <div class="field-label">Heure</div>
+        <input type="text" class="reunion-heure" placeholder="Ex : 09h30" value="${heure||''}">
+      </div>
+    </div>
+    <div class="field-group">
+      <div class="field-label">Personnes présentes</div>
+      <textarea class="reunion-personnes" placeholder="– M. …&#10;– M. …&#10;– M. PECASTAING Eric, expert en automobile Cbt EPME." style="min-height:80px;">${personnes||''}</textarea>
+    </div>
+  `;
+  container.appendChild(div);
+}
+
+function deleteReunion(rid) {
+  const el = document.getElementById(rid);
+  if (el) el.remove();
+}
+
+function collectReunions() {
+  const reunions = [];
+  document.querySelectorAll('#reunions-container > div').forEach(div => {
+    reunions.push({
+      lieu:      div.querySelector('.reunion-lieu')?.value      || '',
+      date:      div.querySelector('.reunion-date')?.value      || '',
+      heure:     div.querySelector('.reunion-heure')?.value     || '',
+      personnes: div.querySelector('.reunion-personnes')?.value || '',
+    });
+  });
+  return reunions;
+}
+
+function restoreReunions(reunions) {
+  if (!reunions || !reunions.length) return;
+  reunions.forEach(r => addReunion(r.lieu, r.date, r.heure, r.personnes));
+}
+
 function setupAutosave() {
   const trigger = () => {
     clearTimeout(saveTimer);
@@ -1960,6 +2028,7 @@ window.addEventListener('DOMContentLoaded', () => {
 function initDefaults() {
   [1, 2, 8, 9, 10].forEach(id => addBloc(id));
   addEvalRow(); addEvalRow(); addEvalRow();
+  addReunion();
   addBloc(5, 'Date et kilométrage à renseigner');
   ['7-0','7-1','7-2','7-3'].forEach(id => addBloc(id));
   addBloc(11);
