@@ -1319,32 +1319,27 @@ async function apiGetOrCreateFolder(token, parentId, folderName) {
 }
 
 async function apiUploadFile(token, folderId, filename, jsonContent) {
-  // Upload via l'API kDrive - multipart ou direct
-  const blob = new Blob([jsonContent], { type: 'application/json' });
-  const formData = new FormData();
-  formData.append('file', blob, filename);
+  const bytes = new TextEncoder().encode(jsonContent);
+  const size  = bytes.length;
 
-  const uploadRes = await fetch(proxyUrl(`/2/drive/${KDRIVE_ID}/files/${folderId}/upload`), {
+  // Endpoint officiel kDrive : POST /2/drive/{id}/files/{folderId}/upload
+  // avec les paramètres en query string et le contenu en body binaire
+  const url = proxyUrl(`/2/drive/${KDRIVE_ID}/files/${folderId}/upload?file_name=${encodeURIComponent(filename)}&total_size=${size}&conflict=version`);
+
+  const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + token },
-    body: formData
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Content-Type': 'application/octet-stream',
+    },
+    body: bytes
   });
-  const uploadData = await uploadRes.json();
-  if (uploadData.result !== 'success') {
-    // Essayer avec PUT si POST échoue
-    const putRes = await fetch(proxyUrl(`/2/drive/${KDRIVE_ID}/upload?file_name=${encodeURIComponent(filename)}&parent_directory_id=${folderId}&total_size=${blob.size}&conflict=version`), {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + token,
-        'Content-Type': 'application/octet-stream',
-      },
-      body: jsonContent
-    });
-    const putData = await putRes.json();
-    if (putData.result !== 'success') throw new Error('Erreur upload : ' + (putData.error?.description || JSON.stringify(putData)));
-    return putData.data;
+
+  const data = await res.json();
+  if (data.result !== 'success') {
+    throw new Error('Erreur upload : ' + (data.error?.description || data.error?.code || JSON.stringify(data)));
   }
-  return uploadData.data;
+  return data.data;
 }
 
 async function apiListFiles(token, folderId) {
