@@ -1322,9 +1322,8 @@ async function apiUploadFile(token, folderId, filename, jsonContent) {
   const bytes = new TextEncoder().encode(jsonContent);
   const size  = bytes.length;
 
-  // Endpoint officiel kDrive : POST /2/drive/{id}/files/{folderId}/upload
-  // avec les paramètres en query string et le contenu en body binaire
-  const url = proxyUrl(`/2/drive/${KDRIVE_ID}/files/${folderId}/upload?file_name=${encodeURIComponent(filename)}&total_size=${size}&conflict=version`);
+  // Paramètre correct : directory_id (et non parent_directory_id)
+  const url = proxyUrl(`/2/drive/${KDRIVE_ID}/upload?file_name=${encodeURIComponent(filename)}&directory_id=${folderId}&total_size=${size}&conflict=version`);
 
   const res = await fetch(url, {
     method: 'POST',
